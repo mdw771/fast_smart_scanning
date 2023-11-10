@@ -38,7 +38,7 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY            #
 # OF SUCH DAMAGE.                                                         #
 # *********************************************************************** #
-
+import logging
 from copy import deepcopy
 
 import numpy as np
@@ -180,7 +180,6 @@ class Sample:
 
         # Compute reconstructions, resize to physical dimensions
         self.recon_image = compute_recon(self.recon_image, measurement_info, self.neighbors)
-
         if self.params_erd.model_type == "slads-net":
             self.poly_features = compute_poly_features(
                 self.params_sample,
@@ -202,7 +201,6 @@ class Sample:
         # Compute the ERD with the prescribed model
         if self.params_erd.model_type == "slads-net":
             erds = self.erd_model.predict(self.poly_features)
-
         self.ERD[unmeasured_idxs[:, 0], unmeasured_idxs[:, 1]] = erds
         self.ERD = self._rescale_and_fix_erd(self.ERD, self.mask)
         self.iteration += 1
@@ -293,6 +291,7 @@ class Sample:
 
     # Determine which unmeasured points of a sample should be scanned given the current E/RD
     def find_new_measurement_idxs(self):
+        # "random" is used for generating training data
         if self.params_sample.scan_method == "random":
             np.random.shuffle(self.measurement_info.unmeasured_idxs)
             new_idxs = self.measurement_info.unmeasured_idxs[: self.params_sample.outer_batch_size].astype(int)
@@ -311,13 +310,14 @@ class Sample:
                     self.measurement_info.unmeasured_idxs[:, 0],
                     self.measurement_info.unmeasured_idxs[:, 1],
                 ]
+                # Take the indices of inb points with the largest erd_values
+                print(erd_values, np.max(erd_values))
                 max_k_indices = np.argpartition(erd_values, -inb)[-inb:]
 
                 new_idxs = self.measurement_info.unmeasured_idxs[max_k_indices]
                 new_values = self.ERD[new_idxs[:, 0], new_idxs[:, 1]]
                 sorted_idxs = np.argsort(-new_values)
                 new_idxs = new_idxs[sorted_idxs]
-
         return np.asarray(new_idxs)
 
     def perform_initial_scan(self):

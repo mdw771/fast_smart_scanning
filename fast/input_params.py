@@ -73,7 +73,8 @@ class TrainingInputParams:
     scan_type: str = "transmission"
     sampling_type: str = "fast_limited"
     num_repeats_per_mask: int = 1
-    measurements_per_initial_mask: int = 10  # Only used if sampling type is fast_limited
+    # Number of sampling ratios to be generated for training. Only used if sampling type is fast_limited
+    measurements_per_initial_mask: int = 10
     random_seed: int = 111
     training_split: float = 0.9
     test_c_values: list = dt.field(default_factory=lambda: [2, 4, 8, 16, 32, 64])

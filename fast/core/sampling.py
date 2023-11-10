@@ -91,13 +91,14 @@ def run_sampling(
         while not completed_run_flag:
 
             # Find next measurement locations
+            # When scan method is "random", this just returns a random list of unmeasured points
             new_idxs = sample.find_new_measurement_idxs()
             if indices_to_actually_measure is not None:
                 new_idxs = new_idxs[:indices_to_actually_measure]
             # Perform measurements, reconstructions and ERD/RD computations
             if len(new_idxs) != 0:
                 sample.perform_measurements(new_idxs)
-
+                # Calling the overriding function in SimulatedSample if training
                 sample.reconstruct_and_compute_erd()
                 if debug:
                     print(sample.iteration, sample.ERD.sum())

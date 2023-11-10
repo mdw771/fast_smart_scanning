@@ -165,6 +165,7 @@ def _run_fast_limited_sampling(
         p_this.initial_scan_ratio = ratio
         (p_this.initial_idxs, p_this.initial_mask) = p_this.generate_initial_mask(p_this.scan_method)
 
+        # For each sampling ratio in each c, a SimulatedSample object is created and added to `results`.
         sample = SimulatedSample(
             sample_params=p_this,
             general_params=params_gen,

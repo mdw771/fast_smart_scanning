@@ -182,7 +182,9 @@ class SimulatedSample(Sample):
                 gaussian_window = np.outer(gaussian_signal, gaussian_signal)
                 gaussian_windows[(sig_this, win_this)] = gaussian_window
 
-            update_mat = padded_rdpps[s1[0] : s2[0] + 1, s1[1] : s2[1] + 1] * gaussian_windows[(sig_this, win_this)]
+            # This is slightly different from the Godaliyadda paper. Here `h` is given by a Gaussian window and
+            # the estimate takes into account all points, either measured or unmeasured, in the window.
+            update_mat = padded_rdpps[s1[0]:s2[0] + 1, s1[1]:s2[1] + 1] * gaussian_windows[(sig_this, win_this)]
             rds_temp[update_idxs[ix, 0], update_idxs[ix, 1]] = np.sum(update_mat)
 
         # Make sure measured locations have 0 RD values

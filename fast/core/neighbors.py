@@ -48,7 +48,9 @@ from .data_structures import MeasurementInfo, NeighborsInfo
 def find_neighbors(minfo: MeasurementInfo, num_neighbors: int, resolution: int = 1):
     neigh = NearestNeighbors(n_neighbors=num_neighbors)
     neigh.fit(minfo.measured_idxs)
+    # For each unmeasured point, find the k nearest measured points.
     neighbor_distances, neighbor_indices = neigh.kneighbors(minfo.unmeasured_idxs)
+    # Shape of neighbor_distances: (num_unmeasured_points, k)
     neighbor_distances = neighbor_distances * resolution
     neighbor_values = minfo.measured_values[neighbor_indices]
     neighbor_weights = _compute_neighbor_weights(neighbor_distances)
