@@ -40,11 +40,67 @@
 # *********************************************************************** #
 
 import argparse
+import copy
 
 import numpy as np
 import skimage
+import matplotlib.pyplot as plt
 
 from ..input_params import SampleParams
+
+
+class FlyScanPathGenerator:
+    def __init__(self, shape, psize_nm=None, return_coordinates_type='pixel'):
+        """
+        Fly scan path generator.
+
+        :param shape: list[int, int]. Shape of the support in pixel.
+        :param psize_nm: float. Pixel size in nm.
+        :param return_coordinates_type: str. Can be 'pixel' or 'nm'. Sets the unit of the returned coordinates.
+        """
+        self.shape = shape
+        self.psize_nm = psize_nm
+        self.return_coordinates_type = return_coordinates_type
+        self.generated_path = []
+        self.dead_segment_mask = []
+
+    def plot_path(self):
+        fig = plt.figure()
+        plt.plot(self.generated_path[:, 1], self.generated_path[:, 0])
+        plt.show()
+
+    def generate_raster_scan_path(self, pos_top_left, pos_bottom_right, vertical_spacing):
+        """
+        Generate a raster (regular) scan path.
+
+        :param pos_top_left: list[float, float]. Top left vertex of the scan grid in pixel. Coordinates are defined
+                             with regards to the support.
+        :param pos_bottom_right: list[float, float]. Bottom right vertex of the scan grid in pixel.
+        :param vertical_spacing: float. Spacing of adjacent scan lines in pixel.
+        :return: list[list[float, float]]. A list of vertices that define the scan path.
+        """
+        current_side = 0  # Indicates whether the current vertex is on the left or right of the grid.
+        current_point = copy.deepcopy(np.array(pos_top_left))
+        self.generated_path.append(copy.deepcopy(current_point))
+        while True:
+            if current_side == 0:
+                current_point[1] = pos_bottom_right[1]
+            else:
+                current_point[1] = pos_top_left[1]
+            current_side = 1 - current_side
+            self.generated_path.append(copy.deepcopy(current_point))
+            if current_point[0] + vertical_spacing > pos_bottom_right[0]:
+                break
+            current_point[0] += vertical_spacing
+            self.generated_path.append(copy.deepcopy(current_point))
+        self.generated_path = np.stack(self.generated_path)
+
+        self.dead_segment_mask = np.ones(len(self.generated_path) - 1, dtype='bool')
+        self.dead_segment_mask[1::2] = False
+
+        if self.return_coordinates_type == 'nm':
+            return self.generated_path * self.psize_nm
+        return self.generated_path
 
 
 def generate_scan_pattern(

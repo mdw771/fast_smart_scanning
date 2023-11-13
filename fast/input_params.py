@@ -263,3 +263,27 @@ class ExperimentSampleParams(SampleParams):
         self.image = image
         self.simulation_type = simulation_type
         super().__init__(image.shape, *args, **kwargs)
+
+
+class FlyScanSampleParams(SampleParams):
+    def __init__(self, image: npt.NDArray, psize_nm, scan_speed_nm_sec, exposure_sec, deadtime_sec,
+                 num_pts_for_integration_per_measurement, *args, **kwargs):
+        """
+        Fly scan parameters.
+
+        :param image: np.ndarray.
+        :param psize_nm: Pixel size in nm.
+        :param scan_speed_nm_sec: Probe speed in nm/sec.
+        :param exposure_sec: The time that the sample is exposured per measurement.
+        :param deadtime_sec: The time that the detectror is inactive and therefore not collecting data between
+                             measurements.
+        :param num_pts_for_integration_per_measurement: The number of points whose values are to be integrated to yield
+                                                        the fly scan measurement. Only used for simulation.
+        """
+        self.image = image
+        self.psize_nm = psize_nm
+        self.scan_speed_nm_sec = scan_speed_nm_sec
+        self.exposure_sec = exposure_sec
+        self.deadtime_sec = deadtime_sec
+        self.num_pts_for_integration_per_measurement = num_pts_for_integration_per_measurement
+        super().__init__(image.shape, *args, **kwargs)
