@@ -1,3 +1,5 @@
+import os
+
 import tifffile
 from pathlib import Path
 from scipy.interpolate import griddata
@@ -9,7 +11,7 @@ from fast.input_params import FlyScanSampleParams
 from fast.utils.generate_scan_pattern import FlyScanPathGenerator
 
 
-if __name__ == '__main__':
+def main():
     image = tifffile.imread(Path('data') / 'xrf_2idd_Cs_L.tiff')
     sample_params = FlyScanSampleParams(
         image=image,
@@ -26,7 +28,20 @@ if __name__ == '__main__':
     scan_path = path_gen.generate_raster_scan_path([1, 1], [133, 131], 1)
     measured_values = measurement_interface.perform_measurement(scan_path, 'pixel', path_gen.dead_segment_mask)
     measured_positions = measurement_interface.measured_positions
+    return measured_values, measured_positions
 
+
+def test_answer():
+    measured_values, measured_positions = main()
+    measured_values_gold = np.load(os.path.join('gold', 'test_flyscan_forward_simulation', 'measured_values.npy'))
+    measured_positions_gold = np.load(os.path.join('gold', 'test_flyscan_forward_simulation', 'measured_positions.npy'))
+    assert np.allclose(measured_values, measured_values_gold)
+    assert np.allclose(measured_positions, measured_positions_gold)
+
+
+if __name__ == '__main__':
+    image = tifffile.imread(Path('data') / 'xrf_2idd_Cs_L.tiff')
+    measured_values, measured_positions = main()
     grid_y, grid_x = np.mgrid[:image.shape[0], :image.shape[1]]
     recon = griddata(measured_positions, measured_values, (grid_y, grid_x))
 
