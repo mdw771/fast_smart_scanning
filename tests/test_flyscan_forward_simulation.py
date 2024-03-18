@@ -20,7 +20,7 @@ def run_simulation(probe=None):
         scan_speed_nm_sec=1,
         exposure_sec=0.9,
         deadtime_sec=0.1,
-        step_size_for_integration_nm=1,
+        step_size_for_integration_nm=0.1,
         probe=probe
     )
     measurement_interface = fast.core.measurement_interface.FlyScanXRFSimulationMeasurementInterface(
