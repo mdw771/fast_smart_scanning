@@ -129,14 +129,20 @@ class FlyScanXRFSimulationMeasurementInterface(SimulationMeasurementInterface):
         meas_pos_list = []
         direction_vector = seg_end_pos - seg_begin_pos
         segment_length = np.linalg.norm(direction_vector)
-        direction_vector = direction_vector / segment_length
+        direction_vector = direction_vector / segment_length  # Unit vector of travel direction
         exposure_vector = direction_vector * scan_speed_nm_sec * exposure_sec / psize_nm
         exposure_length = np.linalg.norm(exposure_vector)
         deadtime_vector = direction_vector * scan_speed_nm_sec * deadtime_sec / psize_nm
         meas_begin_pos = seg_begin_pos
         meas_end_pos = meas_begin_pos + exposure_vector
         length_covered = 0
-        point_sampling_vector = (meas_end_pos - meas_begin_pos) / (num_points_for_integration - 1)
+
+        if self.sample_params.step_size_for_integration_nm is not None:
+            step_szie_for_integration = self.sample_params.step_size_for_integration_nm / psize_nm
+        else:
+            assert self.sample_params.num_pts_for_integration_per_measurement is not None
+            step_szie_for_integration = np.linalg.norm(meas_end_pos - meas_begin_pos) / (num_points_for_integration - 1)
+        point_sampling_vector = direction_vector * step_szie_for_integration
 
         while length_covered < segment_length:
             if length_covered + exposure_length > segment_length:
@@ -145,6 +151,7 @@ class FlyScanXRFSimulationMeasurementInterface(SimulationMeasurementInterface):
             values = self.get_interpolated_values_from_image(points_to_integrate)
             meas = np.mean(values)
             meas_list.append(meas)
+            # Use the midpoint of the segment as the recorded position.
             meas_pos_list.append((meas_begin_pos + meas_end_pos) / 2)
             meas_begin_pos = meas_end_pos + deadtime_vector
             meas_end_pos = meas_begin_pos + exposure_vector
@@ -172,7 +179,7 @@ class FlyScanXRFSimulationMeasurementInterface(SimulationMeasurementInterface):
         assert len(ys) == len(xs)
         return np.stack([ys, xs], axis=1)
 
-    def get_interpolated_values_from_image(self, point_list):
+    def get_interpolated_values_from_image(self, point_list, normalize_probe=True):
         """
         Obtain interpolated values from the image at given locations.
 
@@ -183,7 +190,26 @@ class FlyScanXRFSimulationMeasurementInterface(SimulationMeasurementInterface):
             point_list = np.array(point_list)
         y = point_list[:, 0]
         x = point_list[:, 1]
-        return ndi.map_coordinates(self.image, [y, x], order=1, mode='nearest')
+        if self.sample_params.probe is None:
+            # If probe function is not given, assume delta function.
+            return ndi.map_coordinates(self.image, [y, x], order=1, mode='nearest')
+        else:
+            # Prepare a list of coordinates that include n by m region around each sampled point, where (n, m)
+            # is the probe shape.
+            measurements = []
+            probe = self.sample_params.probe
+            if normalize_probe:
+                probe = probe / np.sum(probe)
+            for this_y, this_x in point_list:
+                this_y_all = np.linspace(this_y - probe.shape[0] / 2.0, this_y + probe.shape[0] / 2.0, probe.shape[0])
+                this_x_all = np.linspace(this_x - probe.shape[1] / 2.0, this_x + probe.shape[1] / 2.0, probe.shape[1])
+                xx, yy = np.meshgrid(this_x_all, this_y_all)
+                yy = yy.reshape(-1)
+                xx = xx.reshape(-1)
+                vals = ndi.map_coordinates(self.image, [yy, xx], order=1, mode='nearest')
+                measured_val = np.sum(vals * probe.reshape(-1))
+                measurements.append(measured_val)
+            return measurements
 
 
 class ExternalMeasurementInterface(MeasurementInterface):

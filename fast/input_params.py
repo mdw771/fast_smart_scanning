@@ -267,7 +267,8 @@ class ExperimentSampleParams(SampleParams):
 
 class FlyScanSampleParams(SampleParams):
     def __init__(self, image: npt.NDArray, psize_nm, scan_speed_nm_sec, exposure_sec, deadtime_sec,
-                 num_pts_for_integration_per_measurement, *args, **kwargs):
+                 num_pts_for_integration_per_measurement=None, step_size_for_integration_nm=None,
+                 probe=None, *args, **kwargs):
         """
         Fly scan parameters.
 
@@ -279,6 +280,8 @@ class FlyScanSampleParams(SampleParams):
                              measurements.
         :param num_pts_for_integration_per_measurement: The number of points whose values are to be integrated to yield
                                                         the fly scan measurement. Only used for simulation.
+        :param probe: np.ndarray. The probe function. If None, it will be assumed to be a delta function. Otherwise,
+                      it should be a 2D array containing the probe that has the same pixel size as the sample image.
         """
         self.image = image
         self.psize_nm = psize_nm
@@ -286,4 +289,6 @@ class FlyScanSampleParams(SampleParams):
         self.exposure_sec = exposure_sec
         self.deadtime_sec = deadtime_sec
         self.num_pts_for_integration_per_measurement = num_pts_for_integration_per_measurement
+        self.step_size_for_integration_nm = step_size_for_integration_nm
+        self.probe = probe
         super().__init__(image.shape, *args, **kwargs)
