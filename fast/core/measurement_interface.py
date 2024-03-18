@@ -83,7 +83,8 @@ class FlyScanXRFSimulationMeasurementInterface(SimulationMeasurementInterface):
         Perform measurement given a fly scan path defined by a list of vertices.
 
         :param vertex_list: list[list[float, float]]. A list of vertex positions that define the scan path, ordered
-                            in (y, x).
+                            in (y, x). The total number of segments is `len(vertex_list) - 1`; for segment i,
+                            probe moves from `vertex_list[i]` to `vertex_list[i + 1]`.
         :param vertex_unit: str. Can be 'pixel' or 'nm'.
         :param dead_segment_mask: list[bool]. A list whose length is len(vertex_list) - 1. Marks whether each segment
                                   is a "live" segment or a "dead" segment where only the probe moves but no data is
