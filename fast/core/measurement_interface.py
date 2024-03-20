@@ -70,13 +70,33 @@ class TransmissionSimulationMeasurementInterface(SimulationMeasurementInterface)
 
 
 class FlyScanXRFSimulationMeasurementInterface(SimulationMeasurementInterface):
-    def __init__(self, image: np.ndarray = None, image_path: str = None, sample_params: FlyScanSampleParams = None):
+    """
+    Fly scan simulator. The simulator's perform measurement method takes in a continuous scan path defined
+    by a list of vertices; the scan path is formed by linearly connecting the vertices sequentially. The simulator
+    automatically split the scan path into exposures based on the setting of exposure time in `sample_params`.
+    Between exposures, there can be dead times where no data is acquired based on the setting of dead time.
+    For each exposure, several points are sampled along the path, whose interval is determined by the setting
+    of `step_size_for_integration_nm` in `sample_params`. The intensities sampled at all sampling points are
+    averaged as the measurement for that exposure. The positions of all sampling points are averaged as the
+    position for that exposure.
+    """
+    def __init__(self, image: np.ndarray = None, image_path: str = None, sample_params: FlyScanSampleParams = None,
+                 eps=1e-5):
+        """
+        The constructor.
+
+        :param image: np.ndarray. The sample image.
+        :param image_path: str. Path to the image.
+        :param sample_params: FlyScanSampleParams.
+        :param eps: float.
+        """
         super().__init__(image, image_path)
         assert sample_params
         self.sample_params = sample_params
         self.measured_values = None
         self.measured_positions = None
-
+        self.eps = eps
+        self.points_to_sample_all_exposures = []
 
     def perform_measurement(self, vertex_list, vertex_unit='pixel', dead_segment_mask=None, *args, **kwargs):
         """
@@ -89,96 +109,89 @@ class FlyScanXRFSimulationMeasurementInterface(SimulationMeasurementInterface):
         :param dead_segment_mask: list[bool]. A list whose length is len(vertex_list) - 1. Marks whether each segment
                                   is a "live" segment or a "dead" segment where only the probe moves but no data is
                                   collected. If None, all segments are assumed to be live.
-        :return list[float]: measured values. The positions of the measurements can be retrieved from the
+        :return list[float]: measured values at all exposures. The positions of the exposures can be retrieved from the
                 `measured_positions` attribute.
         """
+        vertex_list = np.asarray(vertex_list)
         if vertex_unit == 'nm':
             vertex_list = vertex_list / self.sample_params.psize_nm
+
+        self.build_sampling_points(vertex_list, dead_segment_mask)
+
         meas_value_list = []
         meas_pos_list = []
-        for i_seg in range(len(vertex_list) - 1):
-            seg_begin_pos = vertex_list[i_seg]
-            seg_end_pos = vertex_list[i_seg + 1]
-            acquire_data = dead_segment_mask[i_seg]
-            this_value_list, this_pos_list = self.acquire_data_for_segment(seg_begin_pos, seg_end_pos, acquire_data)
-            meas_value_list.append(this_value_list)
-            meas_pos_list.append(this_pos_list)
-        self.measured_values = np.concatenate(meas_value_list)
-        self.measured_positions = np.concatenate([x for x in meas_pos_list if len(x) > 0], axis=0)
+        for i_exposure in range(len(self.points_to_sample_all_exposures)):
+            pts_to_sample = self.points_to_sample_all_exposures[i_exposure]
+            if len(pts_to_sample) == 0:
+                continue
+            sampled_vals = self.get_interpolated_values_from_image(pts_to_sample)
+            meas_value_list.append(np.mean(sampled_vals))
+            meas_pos_list.append(np.mean(pts_to_sample, axis=0))
+        self.measured_values = np.array(meas_value_list)
+        self.measured_positions = np.stack(meas_pos_list, axis=0)
         return self.measured_values
 
-    def acquire_data_for_segment(self, seg_begin_pos, seg_end_pos, acquire_data=True):
-        """
-        Acquire data along a given segment.
+    def build_sampling_points(self, vertex_list, dead_segment_mask=None):
+        points_to_sample_all_exposures = []
+        i_input_segment = 0
+        length_covered_in_current_segment = 0
+        pt_coords = vertex_list[0]
+        while i_input_segment < len(vertex_list) - 1:
+            if dead_segment_mask is not None and dead_segment_mask[i_input_segment] == False:
+                i_input_segment += 1
+                continue
+            length_exposed = 0
+            length_dead = 0
+            length_sampling = 0
+            # Add live segment.
+            points_to_sample_current_exposure = [pt_coords]
+            while length_exposed < self.sample_params.exposure_length_pixel - self.eps:
+                if i_input_segment + 1 >= len(vertex_list):
+                    break
+                current_direction = vertex_list[i_input_segment + 1] - vertex_list[i_input_segment]
+                current_seg_length = np.linalg.norm(current_direction)
+                current_direction = current_direction / current_seg_length
+                if length_covered_in_current_segment + self.sample_params.step_size_for_integration_pixel - length_sampling <= current_seg_length:
+                    pt_coords = pt_coords + current_direction * (self.sample_params.step_size_for_integration_pixel - length_sampling)
+                    points_to_sample_current_exposure.append(pt_coords)
+                    length_covered_in_current_segment += (self.sample_params.step_size_for_integration_pixel - length_sampling)
+                    length_exposed += (self.sample_params.step_size_for_integration_pixel - length_sampling)
+                    length_sampling = 0
+                else:
+                    if i_input_segment + 1 >= len(vertex_list):
+                        break
+                    pt_coords = pt_coords + current_direction * (current_seg_length - length_covered_in_current_segment)
+                    i_input_segment += 1
+                    length_exposed += (current_seg_length - length_covered_in_current_segment)
+                    length_sampling += (current_seg_length - length_covered_in_current_segment)
+                    length_covered_in_current_segment = 0
+            # Update variables for dead segment.
+            while length_dead < self.sample_params.dead_length_pixel - self.eps:
+                if i_input_segment + 1 >= len(vertex_list):
+                    break
+                current_direction = vertex_list[i_input_segment + 1] - vertex_list[i_input_segment]
+                current_seg_length = np.linalg.norm(current_direction)
+                current_direction = current_direction / current_seg_length
+                if length_covered_in_current_segment + self.sample_params.dead_length_pixel - length_dead <= current_seg_length:
+                    pt_coords = pt_coords + current_direction * (self.sample_params.dead_length_pixel - length_dead)
+                    length_covered_in_current_segment += (self.sample_params.dead_length_pixel - length_dead)
+                    break
+                else:
+                    if i_input_segment + 1 >= len(vertex_list):
+                        break
+                    pt_coords = vertex_list[i_input_segment + 1]
+                    i_input_segment += 1
+                    length_dead += (current_seg_length - length_covered_in_current_segment)
+                    length_covered_in_current_segment = 0
+            points_to_sample_all_exposures.append(points_to_sample_current_exposure)
+        self.points_to_sample_all_exposures = points_to_sample_all_exposures
 
-        :param seg_begin_pos: list[float].
-        :param seg_end_pos: list[float].
-        :param acquire_data: bool.
-        :return: list[float], list[float, float]. Measured values and their effective positions, taken as the
-                 mid-point of each exposure.
-        """
-        if not acquire_data:
-            return [], []
-
-        scan_speed_nm_sec = self.sample_params.scan_speed_nm_sec
-        exposure_sec = self.sample_params.exposure_sec
-        deadtime_sec = self.sample_params.deadtime_sec
-        psize_nm = self.sample_params.psize_nm
-        num_points_for_integration = self.sample_params.num_pts_for_integration_per_measurement
-
-        meas_list = []
-        meas_pos_list = []
-        direction_vector = seg_end_pos - seg_begin_pos
-        segment_length = np.linalg.norm(direction_vector)
-        direction_vector = direction_vector / segment_length  # Unit vector of travel direction
-        exposure_vector = direction_vector * scan_speed_nm_sec * exposure_sec / psize_nm
-        exposure_length = np.linalg.norm(exposure_vector)
-        deadtime_vector = direction_vector * scan_speed_nm_sec * deadtime_sec / psize_nm
-        meas_begin_pos = seg_begin_pos
-        meas_end_pos = meas_begin_pos + exposure_vector
-        length_covered = 0
-
-        if self.sample_params.step_size_for_integration_nm is not None:
-            step_szie_for_integration = self.sample_params.step_size_for_integration_nm / psize_nm
-        else:
-            assert self.sample_params.num_pts_for_integration_per_measurement is not None
-            step_szie_for_integration = np.linalg.norm(meas_end_pos - meas_begin_pos) / (num_points_for_integration - 1)
-        point_sampling_vector = direction_vector * step_szie_for_integration
-
-        while length_covered < segment_length:
-            if length_covered + exposure_length > segment_length:
-                meas_end_pos = seg_end_pos
-            points_to_integrate = self.get_integration_point_list(meas_begin_pos, meas_end_pos, point_sampling_vector)
-            values = self.get_interpolated_values_from_image(points_to_integrate)
-            meas = np.mean(values)
-            meas_list.append(meas)
-            # Use the midpoint of the segment as the recorded position.
-            meas_pos_list.append((meas_begin_pos + meas_end_pos) / 2)
-            meas_begin_pos = meas_end_pos + deadtime_vector
-            meas_end_pos = meas_begin_pos + exposure_vector
-            length_covered += (scan_speed_nm_sec * (exposure_sec + deadtime_sec) / psize_nm)
-        return meas_list, meas_pos_list
-
-    def get_integration_point_list(self, meas_begin_pos, meas_end_pos, point_sampling_vector):
-        """
-        Get a list of points whose values are to be integrated to form the fly scan measurement value.
-
-        :param meas_begin_pos: list[float, float].
-        :param meas_end_pos: list[float, float].
-        :param point_sampling_vector: list[float, float].
-        :return: list[float, float].
-        """
-        if point_sampling_vector[0] == 0:
-            xs = np.arange(meas_begin_pos[1], meas_end_pos[1] + point_sampling_vector[1], point_sampling_vector[1])
-            ys = np.array([meas_begin_pos[0]] * len(xs))
-        elif point_sampling_vector[1] == 1:
-            ys = np.arange(meas_begin_pos[0], meas_end_pos[0] + point_sampling_vector[0], point_sampling_vector[0])
-            xs = np.array([meas_begin_pos[1]] * len(ys))
-        else:
-            xs = np.arange(meas_begin_pos[1], meas_end_pos[1] + point_sampling_vector[1], point_sampling_vector[1])
-            ys = np.arange(meas_begin_pos[0], meas_end_pos[0] + point_sampling_vector[0], point_sampling_vector[0])
-        assert len(ys) == len(xs)
-        return np.stack([ys, xs], axis=1)
+    def plot_sampled_points(self):
+        pts = np.concatenate(self.points_to_sample_all_exposures, axis=0)
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(1, 1)
+        ax.scatter(pts[:, 1], pts[:, 0])
+        plt.show()
 
     def get_interpolated_values_from_image(self, point_list, normalize_probe=True):
         """
@@ -197,7 +210,7 @@ class FlyScanXRFSimulationMeasurementInterface(SimulationMeasurementInterface):
         else:
             # Prepare a list of coordinates that include n by m region around each sampled point, where (n, m)
             # is the probe shape.
-            measurements = []
+            sampled_vals = []
             probe = self.sample_params.probe
             if normalize_probe:
                 probe = probe / np.sum(probe)
@@ -208,9 +221,9 @@ class FlyScanXRFSimulationMeasurementInterface(SimulationMeasurementInterface):
                 yy = yy.reshape(-1)
                 xx = xx.reshape(-1)
                 vals = ndi.map_coordinates(self.image, [yy, xx], order=1, mode='nearest')
-                measured_val = np.sum(vals * probe.reshape(-1))
-                measurements.append(measured_val)
-            return measurements
+                val = np.sum(vals * probe.reshape(-1))
+                sampled_vals.append(val)
+            return sampled_vals
 
 
 class ExternalMeasurementInterface(MeasurementInterface):

@@ -292,3 +292,27 @@ class FlyScanSampleParams(SampleParams):
         self.step_size_for_integration_nm = step_size_for_integration_nm
         self.probe = probe
         super().__init__(image.shape, *args, **kwargs)
+
+    @property
+    def exposure_length_nm(self):
+        return self.exposure_sec * self.scan_speed_nm_sec
+
+    @property
+    def exposure_length_pixel(self):
+        return self.exposure_length_nm / self.psize_nm
+
+    @property
+    def dead_length_nm(self):
+        return self.deadtime_sec * self.scan_speed_nm_sec
+
+    @property
+    def dead_length_pixel(self):
+        return self.dead_length_nm / self.psize_nm
+
+    @property
+    def step_size_for_integration_pixel(self):
+        if self.step_size_for_integration_nm:
+            return self.step_size_for_integration_nm / self.psize_nm
+        else:
+            assert self.num_pts_for_integration_per_measurement is not None
+            return self.exposure_length_pixel / self.num_pts_for_integration_per_measurement
