@@ -69,9 +69,10 @@ class TransmissionSimulationMeasurementInterface(SimulationMeasurementInterface)
         return self.image[idxs[:, 0], idxs[:, 1]]
 
 
-class FlyScanXRFSimulationMeasurementInterface(SimulationMeasurementInterface):
+class FlyScanSingleValueSimulationMeasurementInterface(SimulationMeasurementInterface):
     """
-    Fly scan simulator. The simulator's perform measurement method takes in a continuous scan path defined
+    Fly scan simulator for techniques where each exposure measures only a single intensity value.
+    The simulator's perform measurement method takes in a continuous scan path defined
     by a list of vertices; the scan path is formed by linearly connecting the vertices sequentially. The simulator
     automatically split the scan path into exposures based on the setting of exposure time in `sample_params`.
     Between exposures, there can be dead times where no data is acquired based on the setting of dead time.
@@ -98,7 +99,7 @@ class FlyScanXRFSimulationMeasurementInterface(SimulationMeasurementInterface):
         self.eps = eps
         self.points_to_sample_all_exposures = []
 
-    def perform_measurement(self, vertex_list, vertex_unit='pixel', dead_segment_mask=None, *args, **kwargs):
+    def perform_measurement(self, vertex_list, vertex_unit='pixel', *args, **kwargs):
         """
         Perform measurement given a fly scan path defined by a list of vertices.
 
@@ -106,9 +107,6 @@ class FlyScanXRFSimulationMeasurementInterface(SimulationMeasurementInterface):
                             in (y, x). The total number of segments is `len(vertex_list) - 1`; for segment i,
                             probe moves from `vertex_list[i]` to `vertex_list[i + 1]`.
         :param vertex_unit: str. Can be 'pixel' or 'nm'.
-        :param dead_segment_mask: list[bool]. A list whose length is len(vertex_list) - 1. Marks whether each segment
-                                  is a "live" segment or a "dead" segment where only the probe moves but no data is
-                                  collected. If None, all segments are assumed to be live.
         :return list[float]: measured values at all exposures. The positions of the exposures can be retrieved from the
                 `measured_positions` attribute.
         """
@@ -116,7 +114,7 @@ class FlyScanXRFSimulationMeasurementInterface(SimulationMeasurementInterface):
         if vertex_unit == 'nm':
             vertex_list = vertex_list / self.sample_params.psize_nm
 
-        self.build_sampling_points(vertex_list, dead_segment_mask)
+        self.build_sampling_points(vertex_list)
 
         meas_value_list = []
         meas_pos_list = []
@@ -131,15 +129,12 @@ class FlyScanXRFSimulationMeasurementInterface(SimulationMeasurementInterface):
         self.measured_positions = np.stack(meas_pos_list, axis=0)
         return self.measured_values
 
-    def build_sampling_points(self, vertex_list, dead_segment_mask=None):
+    def build_sampling_points(self, vertex_list):
         points_to_sample_all_exposures = []
         i_input_segment = 0
         length_covered_in_current_segment = 0
         pt_coords = vertex_list[0]
         while i_input_segment < len(vertex_list) - 1:
-            if dead_segment_mask is not None and dead_segment_mask[i_input_segment] == False:
-                i_input_segment += 1
-                continue
             length_exposed = 0
             length_dead = 0
             length_sampling = 0

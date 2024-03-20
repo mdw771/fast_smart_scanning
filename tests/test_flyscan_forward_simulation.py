@@ -22,7 +22,7 @@ def run_simulation(image, scan_path, probe=None):
         step_size_for_integration_nm=0.1,
         probe=probe
     )
-    measurement_interface = fast.core.measurement_interface.FlyScanXRFSimulationMeasurementInterface(
+    measurement_interface = fast.core.measurement_interface.FlyScanSingleValueSimulationMeasurementInterface(
         image=image, sample_params=sample_params
     )
     measured_values = measurement_interface.perform_measurement(scan_path, 'pixel')
